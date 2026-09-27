@@ -1,0 +1,14 @@
+{
+  "crmapp_workspace": 1,
+  "crmapp_account": 1,
+  "crmapp_contact": 4,
+  "crmapp_lead": 4,
+  "crmapp_deal": 4,
+  "crmapp_task": 4,
+  "crmapp_auditevent": 4,
+  "crmapp_attachment": 1,
+  "attachment_hashes_verified": true,
+  "restored_runtime_denies_missing_workspace": true,
+  "elapsed_seconds": 2.66,
+  "restored_rls_tables": 9
+}

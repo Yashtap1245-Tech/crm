@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: folio-crm
+    runtime: docker
+    plan: free
+    healthCheckPath: /health/
+    envVars:
+      - key: DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FIELD_ENCRYPTION_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
+      - key: TRUST_PROXY
+        value: "true"
+# Storage and scanner must be configured before attachments can be enabled.
+# Run migrations separately using an owner credential, then grant runtime access.

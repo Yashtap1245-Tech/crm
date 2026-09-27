@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<section class="panel message-panel"><span class="eyebrow">FOLIO</span><h1>{{ title }}</h1><p>{{ text }}</p>{% if post_label %}<form method="post">{% csrf_token %}<button class="btn btn-primary">{{ post_label }}</button></form>{% endif %}<a class="d-block mt-4" href="{% url 'login' %}">Back to sign in</a></section>{% endblock %}
