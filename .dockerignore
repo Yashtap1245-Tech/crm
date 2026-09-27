@@ -1,4 +1,9 @@
 .env
+.env.*
+LOCAL_ACCESS.md
+*.fernet
+test-results
+LOGOUT_LAYOUT_TEST.json
 .git
 .venv
 __pycache__
