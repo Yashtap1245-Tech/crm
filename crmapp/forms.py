@@ -106,9 +106,14 @@ class RecordForm(forms.ModelForm):
         for name in ("assigned_to",):
             if name in self.fields:
                 self.fields[name].queryset = Account.objects.filter(workspace=workspace, is_active=True)
-        for name in ("organization", "contact"):
+        # ModelForm fields are built at import time, when the tenant manager
+        # deliberately returns .none(). Start afresh inside the request context;
+        # filtering the stored queryset would preserve that empty result forever.
+        for name, model in (("organization", Organization), ("contact", Contact)):
             if name in self.fields:
-                self.fields[name].queryset = self.fields[name].queryset.filter(archived=False)
+                self.fields[name].queryset = model.objects.filter(
+                    workspace=workspace, archived=False
+                ).order_by("name", "pk")
         if self.instance._state.adding and "assigned_to" in self.fields:
             self.initial["assigned_to"] = user.pk
         self.initial["version"] = self.instance.version if hasattr(self.instance, "version") else 1

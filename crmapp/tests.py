@@ -396,6 +396,54 @@ class CRMTests(TestCase):
     def test_framing_is_denied(self):
         self.assertEqual(self.client.get("/").headers["X-Frame-Options"], "DENY")
 
+    def test_relationship_dropdowns_list_current_company_for_owner_and_member(self):
+        with workspace_context(self.a.pk):
+            Contact.objects.create(workspace=self.a, name="Archived contact", archived=True)
+            Organization.objects.create(workspace=self.a, name="Archived organization", archived=True)
+        for user in (self.owner, self.member):
+            self.sign_in(user)
+            for kind, name, obj in [
+                ("contacts", "organization", self.org),
+                ("leads", "contact", self.contact),
+                ("deals", "contact", self.contact),
+            ]:
+                with self.subTest(role=user.role, kind=kind):
+                    response = self.client.get(f"/records/{kind}/new/")
+                    self.assertEqual(response.status_code, 200)
+                    self.assertContains(response, f'<option value="{obj.pk}">{obj.name}</option>', html=True)
+                    self.assertNotContains(response, "Beta Secret Contact")
+                    self.assertNotContains(response, "Beta Org")
+                    self.assertNotContains(response, "Archived contact")
+                    self.assertNotContains(response, "Archived organization")
+
+    def test_contact_accepts_organization_from_current_workspace(self):
+        response = self.client.post(
+            "/records/contacts/new/",
+            {"name": "Linked contact", "organization": str(self.org.pk), "assigned_to": self.member.pk},
+        )
+        self.assertEqual(response.status_code, 302)
+        with workspace_context(self.a.pk):
+            self.assertEqual(Contact.objects.get(name="Linked contact").organization_id, self.org.pk)
+
+    def test_deal_accepts_contact_and_keeps_it_selected_on_edit(self):
+        response = self.client.post(
+            "/records/deals/new/",
+            {
+                "name": "Linked deal",
+                "contact": str(self.contact.pk),
+                "amount": "100",
+                "stage": "qualified",
+                "assigned_to": self.member.pk,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        with workspace_context(self.a.pk):
+            deal = Deal.objects.get(name="Linked deal")
+        response = self.client.get(f"/records/deals/{deal.pk}/edit/")
+        self.assertContains(
+            response, f'<option value="{self.contact.pk}" selected>{self.contact.name}</option>', html=True
+        )
+
     def test_csrf_required_for_mutations(self):
         from django.test import Client
 
