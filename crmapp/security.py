@@ -42,17 +42,24 @@ def allowed(key, limit=10, seconds=600):
         return bucket.count <= limit
 
 
+def matching_totp_step(secret, code, last_step=-1):
+    totp = pyotp.TOTP(secret)
+    step = int(time.time()) // 30
+    for offset in (0, -1, 1):
+        candidate = step + offset
+        if candidate > last_step and totp.verify(code, for_time=candidate * 30):
+            return candidate
+    return None
+
+
 def verify_totp(account, code):
     with transaction.atomic():
         user = Account.objects.select_for_update().get(pk=account.pk)
         if not user.totp_secret:
             return False
-        totp = pyotp.TOTP(decrypt(user.totp_secret))
-        step = int(time.time()) // 30
-        for offset in (-1, 0, 1):
-            candidate = step + offset
-            if candidate > user.totp_last_step and totp.verify(code, for_time=candidate * 30):
-                user.totp_last_step = candidate
-                user.save(update_fields=["totp_last_step"])
-                return True
+        step = matching_totp_step(decrypt(user.totp_secret), code, user.totp_last_step)
+        if step is not None:
+            user.totp_last_step = step
+            user.save(update_fields=["totp_last_step"])
+            return True
     return False

@@ -1,5 +1,6 @@
 import csv
 import io
+from unittest.mock import patch
 import pyotp
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import DatabaseError, IntegrityError, connection, transaction
@@ -244,6 +245,39 @@ class CRMTests(TestCase):
         code = pyotp.TOTP(secret).now()
         self.assertTrue(verify_totp(self.owner, code))
         self.assertFalse(verify_totp(self.owner, code))
+
+    def test_mfa_setup_accepts_adjacent_steps_and_records_replay_boundary(self):
+        now = 1800000015
+        for offset in (-1, 0, 1):
+            with self.subTest(offset=offset):
+                Account.objects.filter(pk=self.owner.pk).update(totp_secret="", totp_last_step=-1)
+                self.client.get("/mfa/setup/")
+                from .security import decrypt
+                secret = decrypt(self.client.session["pending_totp"])
+                code = pyotp.TOTP(secret).at(now + offset * 30)
+                with patch("crmapp.security.time.time", return_value=now):
+                    response = self.client.post("/mfa/setup/", {"code": code})
+                    self.assertRedirects(response, "/onboarding/", fetch_redirect_response=False)
+                    self.owner.refresh_from_db()
+                    self.assertEqual(self.owner.totp_last_step, now // 30 + offset)
+                    self.assertFalse(verify_totp(self.owner, code))
+                self.assertNotIn("pending_totp", self.client.session)
+
+    def test_mfa_setup_rejects_stale_and_unrelated_codes_without_enrolling(self):
+        from .security import decrypt
+        Account.objects.filter(pk=self.owner.pk).update(totp_secret="", totp_last_step=-1)
+        self.client.get("/mfa/setup/")
+        secret = decrypt(self.client.session["pending_totp"])
+        now = 1800000015
+        codes = [pyotp.TOTP(secret).at(now - 90), pyotp.TOTP(secret).at(now + 90), "abcdef"]
+        for code in codes:
+            with patch("crmapp.security.time.time", return_value=now):
+                response = self.client.post("/mfa/setup/", {"code": code})
+            self.assertContains(response, "Code not accepted")
+            self.owner.refresh_from_db()
+            self.assertEqual(self.owner.totp_secret, "")
+            self.assertEqual(self.owner.totp_last_step, -1)
+            self.assertEqual(decrypt(self.client.session["pending_totp"]), secret)
 
     def test_conversion_is_idempotent(self):
         with workspace_context(self.a.pk):

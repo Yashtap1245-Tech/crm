@@ -11,7 +11,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 from .forms import CodeForm, CompanySignupForm, InviteForm, LoginForm, SignupForm, WorkspaceForm
 from .models import Account, ActionToken, Workspace
-from .security import allowed, decrypt, encrypt, verify_totp
+from .security import allowed, decrypt, encrypt, matching_totp_step, verify_totp
 from .services import audit, company_capacity_lock, find_token, queue_mail, send_verification, token_for
 
 
@@ -173,15 +173,20 @@ def mfa_setup(request):
     if request.method == "POST":
         if not throttle(request, "mfa", 10):
             return HttpResponse("Too many attempts.", status=429)
-        if form.is_valid() and pyotp.TOTP(secret).verify(form.cleaned_data["code"]):
-            request.user.totp_secret = encrypt(secret)
-            request.user.save(update_fields=["totp_secret"])
-            verify_totp(request.user, form.cleaned_data["code"])
+        step = matching_totp_step(secret, form.cleaned_data["code"]) if form.is_valid() else None
+        if step is not None:
+            with transaction.atomic():
+                user = Account.objects.select_for_update().get(pk=request.user.pk)
+                if user.totp_secret:
+                    return redirect("mfa_verify")
+                user.totp_secret = encrypt(secret)
+                user.totp_last_step = step
+                user.save(update_fields=["totp_secret", "totp_last_step"])
             request.session["mfa_user"] = request.user.pk
             request.session.pop("pending_totp", None)
             messages.success(request, "Authenticator enabled. Keep your authenticator backup secure.")
             return redirect("onboarding")
-        form.add_error(None, "Enter a current code from your authenticator.")
+        form.add_error(None, "Code not accepted. Use this page's setup key, enable automatic date and time on your phone, and try a fresh six-digit code.")
     response = render(
         request,
         "form.html",
